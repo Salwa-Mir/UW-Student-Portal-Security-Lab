@@ -23,6 +23,9 @@ const COURSES = ["CYS-331L Secure Software Design", "CS-101 Programming", "MT-21
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
+const ALLOWED_NEXT = ["index.html"];
+let failCount = 0;
+let lockedUntil = 0;
 
 async function sha256(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -36,16 +39,30 @@ function getSession() {
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (Date.now() < lockedUntil) {
+    const secs = Math.ceil((lockedUntil - Date.now()) / 1000);
+    $("loginMsg").textContent = "Too many failed attempts. Try again in " + secs + " seconds.";
+    return;
+  }
   const email = $("email").value;
   const pw = $("password").value;
   const u = USERS.find((x) => x.email === email);
-  if (!u || (await sha256("uw" + u.id + pw)) !== u.passwordHash) {
-    $("loginMsg").textContent = "Login failed for " + email;
+  const ok = u && (await sha256("uw" + u.id + pw)) === u.passwordHash;
+  if (!ok) {
+    failCount++;
+    if (failCount >= 3) {
+      lockedUntil = Date.now() + 30000;
+      failCount = 0;
+      $("loginMsg").textContent = "Too many failed attempts. Sign-in blocked for 30 seconds.";
+    } else {
+      $("loginMsg").textContent = "Login failed for " + email;
+    }
     return;
   }
+  failCount = 0;
   sessionStorage.setItem("uid", String(u.id));
   const next = params.get("next");
-  if (next) { location.href = next; return; }
+  if (next && ALLOWED_NEXT.includes(next)) { location.assign(next); return; }
   render();
 });
 
